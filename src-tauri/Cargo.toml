@@ -1,0 +1,83 @@
+[package]
+name = "tauri-app"
+version = "1.0.2"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2024"
+# 显式指定默认入口：src/main.rs（自动发现的 tauri-app）与 M0 基准用的
+# grename-bench 并存时，`tauri dev` 默认执行的 `cargo run` 不带 --bin，
+# 不加这一行 Cargo 会报 "could not determine which binary to run"。
+# 只影响未指定 --bin 时的选择；`cargo run --bin grename-bench --features bench` 不受影响。
+default-run = "tauri-app"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "tauri_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[features]
+# 仅在显式跑 M0 基准时启用；默认构建完全不编译 bench bin。
+bench = []
+
+[[bin]]
+name = "grename-bench"
+path = "src/bin/grename-bench.rs"
+required-features = ["bench"]
+
+# M2 崩溃恢复稳定性用例：同样只在显式 --features bench 时编译，
+# 默认构建 / tauri dev 完全不受影响（default-run 已锁定 tauri-app）。
+[[bin]]
+name = "grename-crash"
+path = "src/bin/grename-crash.rs"
+required-features = ["bench"]
+
+# M3 后端命令级自动回归：同样只在显式 --features bench 时编译。
+[[bin]]
+name = "grename-regress"
+path = "src/bin/grename-regress.rs"
+required-features = ["bench"]
+
+# v1.15 P1 功能回归（自定义模板 + 暂停标志）：同样只在 --features bench 时编译。
+[[bin]]
+name = "grename-features"
+path = "src/bin/grename-features.rs"
+required-features = ["bench"]
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# M1 规则引擎：RE2 系，线性时间、免疫 ReDoS（设计文档 §6.2）
+regex = "1"
+
+# --- Grename M0 ---
+# bundled 让 SQLite 随 crate 编译，避免目标机缺少 sqlite3 运行库。
+rusqlite = { version = "0.32", features = ["bundled"] }
+# 并行流式目录遍历（内部按 CPU 预取，迭代器产出，不收集全量路径）
+jwalk = "0.8"
+# 撤销复核阶段的批量 stat 并行（设计文档 §6.6.2）
+rayon = "1"
+uuid = { version = "1", features = ["v4"] }
+# §7.1 可选内容指纹（undo_verify_content）。sha2 0.10 已在依赖树与本机缓存中，
+# 这里只是把间接依赖提升为直接依赖，不新增下载、不新增 crate。
+# 实现用 SHA-256 摘要前 16 字节，与设计中 BLAKE3 前 16 字节语义等价（同为内容摘要截断）。
+sha2 = "0.10"
+
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
